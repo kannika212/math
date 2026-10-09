@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fraction Fusion Online - แผ่นใสทับซ้อนเศษส่วน</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Sarabun', sans-serif;
+            background-color: #f0fdf4;
+            margin: 0;
+            overflow-x: hidden;
+            user-select: none; /* Prevent text selection during drag */
+        }
+
+        .fraction-box {
+            position: relative;
+            width: 150px;
+            height: 150px;
+            border: 4px solid #334155;
+            border-radius: 8px;
+            background-color: white;
+            overflow: hidden;
+            display: grid;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        }
+
+        /* The grid cells inside the fraction box */
+        .grid-cell {
+            border: 1px dashed rgba(51, 65, 85, 0.3);
+            transition: background-color 0.4s ease;
+        }
+
+        /* Active (colored) cells */
+        .cell-blue { background-color: rgba(59, 130, 246, 0.7); } /* Tailwind Blue 500 */
+        .cell-yellow { background-color: rgba(234, 179, 8, 0.7); } /* Tailwind Yellow 500 */
+        .cell-green { background-color: rgba(34, 197, 94, 0.8); } /* Tailwind Green 500 for merged */
+
+        .slicer-tool {
+            width: 80px;
+            height: 80px;
+            border: 2px solid #64748b;
+            border-radius: 8px;
+            background-color: rgba(255, 255, 255, 0.8);
+            cursor: grab;
+            display: grid;
+            position: relative;
+            z-index: 50;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .slicer-tool:active {
+            cursor: grabbing;
+        }
+        
+        .slicer-line-h {
+            border-bottom: 2px solid #ef4444; /* Red line for horizontal cuts */
+            width: 100%;
+        }
+        .slicer-line-h:last-child { border-bottom: none; }
+
+        .slicer-line-v {
+            border-right: 2px solid #ef4444; /* Red line for vertical cuts */
+            height: 100%;
+        }
+        .slicer-line-v:last-child { border-right: none; }
+
+        /* Highlight target when hovering over with slicer */
+        .drag-over {
+            transform: scale(1.05);
+            border-color: #ef4444;
+            box-shadow: 0 0 15px rgba(239, 68, 68, 0.5);
+        }
+
+        .equation-input {
+            width: 50px;
+            text-align: center;
+            font-size: 1.5rem;
+            font-weight: bold;
+            border: 2px solid #cbd5e1;
+            border-radius: 4px;
+            outline: none;
+            transition: border-color 0.2s;
+        }
+        .equation-input:focus { border-color: #3b82f6; }
+        
+        .fraction-line {
+            width: 100%;
+            height: 3px;
+            background-color: #334155;
+            margin: 4px 0;
+        }
+
+        .shake-animation {
+            animation: shake 0.5s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-1px, 0, 0); }
+            20%, 80% { transform: translate3d(2px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-4px, 0, 0); }
+            40%, 60% { transform: translate3d(4px, 0, 0); }
+        }
+
+        .number-update-anim {
+            animation: pop 0.5s ease;
+            color: #ef4444;
+        }
+
+        @keyframes pop {
+            0% { transform: scale(1); }
+            50% { transform: scale(1.5); }
+            100% { transform: scale(1); }
+        }
+
+        /* Modal styling */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            z-index: 100;
+            justify-content: center;
+            align-items: center;
+        }
+        .modal.active { display: flex; }
+    </style>
+</head>
+<body class="flex flex-col min-h-screen text-slate-800">
+
+    <header class="bg-emerald-600 text-white p-4 shadow-md text-center">
+        <h1 class="text-3xl font-bold tracking-wide">Fraction Fusion <span class="text-emerald-200">Online</span></h1>
+        <p class="text-sm mt-1">คลิก ลาก ทับซ้อน... เปลี่ยนสมการเศษส่วนให้เป็นภาพที่มองเห็นได้</p>
+    </header>
+
+    <main class="flex-grow flex flex-col md:flex-row p-6 gap-6 max-w-6xl mx-auto w-full">
+        
+        <!-- Left Panel: Tools & Slicers -->
+        <div class="w-full md:w-1/4 bg-white rounded-xl shadow-lg p-5 flex flex-col items-center">
+            <h2 class="text-xl font-bold text-slate-700 mb-2 border-b-2 border-emerald-400 pb-2 w-full text-center">เครื่องมือหั่นตาราง</h2>
+            <p class="text-sm text-slate-500 mb-6 text-center">ลากแผ่นตารางด้านล่างนี้ ไปวางทับบล็อกเศษส่วนเพื่อทำให้ช่องมีขนาดเท่ากัน</p>
+            
+            <div class="flex flex-col gap-6 w-full items-center" id="slicer-container">
+                <!-- Slicers will be generated here by JS based on the problem -->
+            </div>
+        </div>
+
+        <!-- Right Panel: Play Board -->
+        <div class="w-full md:w-3/4 flex flex-col items-center">
+            
+            <!-- Alert / Feedback Message Box -->
+            <div id="feedback-box" class="bg-blue-50 border-l-4 border-blue-500 text-blue-700 p-4 rounded mb-6 w-full max-w-2xl opacity-0 transition-opacity duration-300 min-h-[60px] flex items-center justify-center font-semibold">
+                พร้อมเรียนรู้แล้ว พิมพ์โจทย์เพื่อเริ่มได้เลย!
+            </div>
+
+            <div class="bg-white rounded-xl shadow-lg p-6 mb-8 w-full max-w-2xl flex flex-col items-center">
+                <h3 class="text-lg font-bold text-slate-600 mb-4">กระดานสมการ</h3>
+                
+                <div class="flex items-center justify-center gap-4 md:gap-8 text-2xl font-bold">
+                    
+                    <!-- Fraction 1 (Blue) -->
+                    <div class="flex flex-col items-center" id="eq-frac-1">
+                        <input type="number" id="num1" class="equation-input text-blue-600" value="1" min="1" max="5">
+                        <div class="fraction-line"></div>
+                        <input type="number" id="den1" class="equation-input text-blue-600" value="2" min="2" max="6">
+                    </div>
+
+                    <div class="text-3xl text-slate-500">+</div>
+
+                    <!-- Fraction 2 (Yellow) -->
+                    <div class="flex flex-col items-center" id="eq-frac-2">
+                        <input type="number" id="num2" class="equation-input text-yellow-600" value="1" min="1" max="5">
+                        <div class="fraction-line"></div>
+                        <input type="number" id="den2" class="equation-input text-yellow-600" value="3" min="2" max="6">
+                    </div>
+
+                    <div class="text-3xl text-slate-500">=</div>
+
+                    <!-- Result Fraction (Green) - Readonly initally -->
+                    <div class="flex flex-col items-center">
+                        <input type="text" id="num-res" class="equation-input bg-slate-100 text-green-600" readonly placeholder="?">
+                        <div class="fraction-line"></div>
+                        <input type="text" id="den-res" class="equation-input bg-slate-100 text-green-600" readonly placeholder="?">
+                    </div>
+                </div>
+                
+                <button id="btn-generate" class="mt-6 bg-emerald-500 hover:bg-emerald-600 text-white font-bold py-2 px-6 rounded-full transition-colors shadow-md">
+                    สร้างบล็อกภาพ
+                </button>
+            </div>
+
+            <div class="flex flex-col md:flex-row items-center justify-center gap-8 w-full relative" id="visualizer-board">
+                
+                <!-- Box 1 Container -->
+                <div class="flex flex-col items-center gap-2">
+                    <span class="text-sm font-bold text-blue-600" id="label-box1">ตัวตั้ง</span>
+                    <div id="box1" class="fraction-box" data-id="1">
+                        <!-- JS fills this -->
+                    </div>
+                </div>
+
+                <!-- Plus Icon (Draggable target to merge) -->
+                <div id="merge-zone" class="w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center text-3xl font-bold text-slate-400 cursor-pointer border-2 border-dashed border-slate-400 transition-all hover:bg-slate-300">
+                    +
+                </div>
+
+                <!-- Box 2 Container -->
+                <div class="flex flex-col items-center gap-2">
+                    <span class="text-sm font-bold text-yellow-600" id="label-box2">ตัวบวก</span>
+                    <div id="box2" class="fraction-box" data-id="2">
+                        <!-- JS fills this -->
+                    </div>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+    <!-- Friction Modal (Forces user to type new number after slicing) -->
+    <div id="friction-modal" class="modal">
+        <div class="bg-white p-8 rounded-xl shadow-2xl max-w-sm text-center">
+            <h2 class="text-2xl font-bold text-emerald-600 mb-4">หั่นตารางสำเร็จ!</h2>
+            <p class="text-slate-600 mb-6 text-lg">ตอนนี้นับช่องได้ทั้งหมดกี่ช่องเอ่ย? พิมพ์เพื่ออัปเดตสมการเลย</p>
+            
+            <div class="flex items-center justify-center gap-2 text-2xl font-bold mb-6">
+                <span id="fric-target-num" class="text-slate-400">?</span>
+                <span class="text-slate-400">/</span>
+                <input type="number" id="fric-input-den" class="equation-input border-emerald-400" placeholder="?">
+            </div>
+            <p id="fric-error" class="text-red-500 text-sm mb-4 hidden">ยังนับไม่ถูก ลองนับช่องทั้งหมดดูใหม่นะ!</p>
+            <button id="btn-fric-submit" class="bg-emerald-500 text-white px-6 py-2 rounded-full font-bold w-full">ยืนยัน</button>
+        </div>
+    </div>
+
+    <!-- Success Modal -->
+    <div id="success-modal" class="modal">
+        <div class="bg-white p-8 rounded-xl shadow-2xl max-w-md text-center">
+            <div class="text-6xl mb-4">🎉</div>
+            <h2 class="text-3xl font-bold text-emerald-600 mb-2">ยอดเยี่ยมมาก!</h2>
+            <p class="text-slate-600 mb-6 text-lg">คุณได้รวมร่างเศษส่วนสำเร็จแล้ว คำตอบคือ <span id="final-answer" class="font-bold text-2xl text-green-600"></span></p>
+            
+            <div class="bg-emerald-50 p-4 rounded-lg text-left mb-6">
+                <p class="font-bold text-slate-700 mb-2">ถอดบทเรียน (Debrief):</p>
+                <p class="text-sm text-slate-600">เราไม่สามารถเอาเศษส่วนมาบวกกันตรงๆ ได้ตั้งแต่แรก เพราะ <strong>"ขนาดชิ้นส่วนไม่เท่ากัน"</strong> เราจึงต้องใช้แผ่นตารางมาหั่นทับซ้อน เพื่อทำให้ช่องทุกช่อง (ตัวส่วน) มีขนาดเท่ากันก่อนนั่นเอง!</p>
+            </div>
+
+            <button id="btn-restart" class="bg-emerald-500 hover:bg-emerald-600 text-white px-8 py-3 rounded-full font-bold shadow-lg transition-transform transform hover:scale-105">เล่นข้อใหม่</button>
+        </div>
+    </div>
+
+    <script>
+        // State variables
+        let state = {
+            f1: { num: 1, den: 2, currentRows: 1, currentCols: 2, activeColor: 'blue' }, // Box 1 is vertical lines (cols)
+            f2: { num: 1, den: 3, currentRows: 3, currentCols: 1, activeColor: 'yellow' }, // Box 2 is horizontal lines (rows)
+            isMerged: false,
+            slicingTargetId: null, // Which box is currently being updated in friction modal
+            expectedDen: 0
+        };
+
+        // DOM Elements
+        const box1 = document.getElementById('box1');
+        const box2 = document.getElementById('box2');
+        const slicerContainer = document.getElementById('slicer-container');
+        const feedbackBox = document.getElementById('feedback-box');
+        
+        // --- Core Functions ---
+
+        function showFeedback(msg, type = 'info') {
+            feedbackBox.textContent = msg;
+            feedbackBox.style.opacity = '1';
+            
+            feedbackBox.className = 'p-4 rounded mb-6 w-full max-w-2xl transition-opacity duration-300 min-h-[60px] flex items-center justify-center font-semibold ';
+            if(type === 'error') feedbackBox.classList.add('bg-red-50', 'border-l-4', 'border-red-500', 'text-red-700');
+            else if(type === 'success') feedbackBox.classList.add('bg-green-50', 'border-l-4', 'border-green-500', 'text-green-700');
+            else feedbackBox.classList.add('bg-blue-50', 'border-l-4', 'border-blue-500', 'text-blue-700');
+            
+            setTimeout(() => {
+                if(feedbackBox.textContent === msg) feedbackBox.style.opacity = '0';
+            }, 5000);
+        }
+
+        // Generate the grid inside a box
+        function renderBox(container, rows, cols, activeCount, colorClass) {
+            container.innerHTML = '';
+            
+            // Set grid template dynamically based on rows and columns
+            container.style.gridTemplateRows = `repeat(${rows}, 1fr)`;
+            container.style.gridTemplateColumns = `repeat(${cols}, 1fr)`;
+
+            const totalCells = rows * cols;
+            // For box 1 (vertical initially), fill left to right
+            // For box 2 (horizontal initially), fill top to bottom
+            
+            for (let i = 0; i < totalCells; i++) {
+                const cell = document.createElement('div');
+                cell.classList.add('grid-cell');
+                
+                // Logic to color cells based on original orientation. 
+                // To keep it simple conceptually for the prototype: we just color the first 'activeCount' cells.
+                // However, visually it's better if they form a solid block.
+                
+                let isColored = false;
+                
+                if (container.id === 'box1') {
+                    // Box 1 (columns): color if current column index < initial numerator * (current total cols / initial cols)
+                    // Wait, easier approach: total colored area remains same ratio.
+                    // If we have totalCells, we need to color (num/den) * totalCells.
+                    // Let's color top-down, left-right.
+                    const colIndex = i % cols;
+                    const coloredCols = (state.f1.num / state.f1.den) * cols;
+                    if (colIndex < coloredCols) isColored = true;
+                } else if (container.id === 'box2') {
+                    // Box 2 (rows): color top rows.
+                    const rowIndex = Math.floor(i / cols);
+                    const coloredRows = (state.f2.num / state.f2.den) * rows;
+                    if (rowIndex < coloredRows) isColored = true;
+                } else {
+                     // Merged box logic (if we were rendering it here)
+                     if(i < activeCount) isColored = true;
+                }
+
+                if (isColored && colorClass) {
+                    cell.classList.add(colorClass);
+                }
+                
+                container.appendChild(cell);
+            }
+        }
+
+        // Setup the initial problem based on inputs
+        function generateProblem() {
+            const n1 = parseInt(document.getElementById('num1').value);
+            const d1 = parseInt(document.getElementById('den1').value);
+            const n2 = parseInt(document.getElementById('num2').value);
+            const d2 = parseInt(document.getElementById('den2').value);
+
+            if (n1 >= d1 || n2 >= d2) {
+                showFeedback("ตัวเศษต้องน้อยกว่าตัวส่วนนะครับ", "error");
+                return;
+            }
+
+            // Update State
+            state.f1 = { num: n1, den: d1, currentRows: 1, currentCols: d1, activeColor: 'cell-blue' };
+            state.f2 = { num: n2, den: d2, currentRows: d2, currentCols: 1, activeColor: 'cell-yellow' };
+            state.isMerged = false;
+
+            // Reset result UI
+            document.getElementById('num-res').value = '';
+            document.getElementById('den-res').value = '';
+            
+            // Render Visuals
+            renderBox(box1, state.f1.currentRows, state.f1.currentCols, state.f1.num, state.f1.activeColor);
+            renderBox(box2, state.f2.currentRows, state.f2.currentCols, state.f2.num, state.f2.activeColor);
+
+            // Generate Slicers based on denominators
+            generateSlicers(d1, d2);
+            
+            showFeedback("สร้างบล็อกเรียบร้อย! ลองลากบล็อกสีมารวมกันดูสิ", "info");
+            
+            // Enable drag on boxes for "Merge" friction
+            enableMergeDrag();
+        }
+
+        function generateSlicers(d1, d2) {
+            slicerContainer.innerHTML = '';
+
+            // Slicer 1: Represents the denominator of Box 2 (Horizontal lines)
+            // Used to cut Box 1
+            const slicerH = createSlicerElement(d2, 'h');
+            slicerContainer.appendChild(slicerH);
+
+            // Slicer 2: Represents the denominator of Box 1 (Vertical lines)
+            // Used to cut Box 2
+            if(d1 !== d2) { // Only create if different, to avoid confusion
+                const slicerV = createSlicerElement(d1, 'v');
+                slicerContainer.appendChild(slicerV);
+            }
+        }
+
+        function createSlicerElement(parts, direction) {
+            const slicer = document.createElement('div');
+            slicer.classList.add('slicer-tool');
+            slicer.setAttribute('draggable', 'true');
+            slicer.dataset.parts = parts;
+            slicer.dataset.dir = direction;
+
+            if (direction === 'h') {
+                slicer.style.gridTemplateRows = `repeat(${parts}, 1fr)`;
+                for(let i=0; i<parts; i++) {
+                    const line = document.createElement('div');
+                    line.classList.add('slicer-line-h');
+                    slicer.appendChild(line);
+                }
+                slicer.title = `เครื่องมือหั่นแนวนอน ${parts} ส่วน (ลากไปทับบล็อกตัวตั้ง)`;
+            } else {
+                slicer.style.gridTemplateColumns = `repeat(${parts}, 1fr)`;
+                for(let i=0; i<parts; i++) {
+                    const line = document.createElement('div');
+                    line.classList.add('slicer-line-v');
+                    slicer.appendChild(line);
+                }
+                slicer.title = `เครื่องมือหั่นแนวตั้ง ${parts} ส่วน (ลากไปทับบล็อกตัวบวก)`;
+            }
+
+            // Drag Events
+            slicer.addEventListener('dragstart', (e) => {
+                e.dataTransfer.setData('text/plain', JSON.stringify({parts: parts, dir: direction}));
+                e.dataTransfer.effectAllowed = 'copy';
+                setTimeout(() => slicer.style.opacity = '0.5', 0);
+            });
+            slicer.addEventListener('dragend', () => {
+                slicer.style.opacity = '1';
+                box1.classList.remove('drag-over');
+                box2.classList.remove('drag-over');
+            });
+
+            return slicer;
+        }
+
+        // Setup Drop Zones for Slicers
+        [box1, box2].forEach(box => {
+            box.addEventListener('dragover', (e) => {
+                e.preventDefault(); // allow drop
+                if(e.dataTransfer.types.includes('text/plain')) {
+                    box.classList.add('drag-over');
+                }
+            });
+            box.addEventListener('dragleave', () => {
+                box.classList.remove('drag-over');
+            });
+            box.addEventListener('drop', (e) => {
+                e.preventDefault();
+                box.classList.remove('drag-over');
+                
+                const dataStr = e.dataTransfer.getData('text/plain');
+                if(!dataStr) return;
+                
+                try {
+                    const data = JSON.parse(dataStr);
+                    handleSliceDrop(box, data.parts, data.dir);
+                } catch(err) {
+                    // Ignored - probably dropped something else
+                }
+            });
+        });
+
+        function handleSliceDrop(targetBox, parts, dir) {
+            const isBox1 = targetBox.id === 'box1';
+            
+            // Validation: Only allow Horizontal slicer on Box 1, Vertical on Box 2
+            if (isBox1 && dir === 'v') {
+                showFeedback("เอ๊ะ! บล็อกนี้แบ่งแนวตั้งอยู่แล้ว ลองใช้เครื่องมือหั่นแนวนอนดูสิ", "error");
+                targetBox.classList.add('shake-animation');
+                setTimeout(() => targetBox.classList.remove('shake-animation'), 500);
+                return;
+            }
+            if (!isBox1 && dir === 'h') {
+                showFeedback("บล็อกนี้แบ่งแนวนอนอยู่แล้ว ลองใช้เครื่องมือหั่นแนวตั้งดูนะ", "error");
+                targetBox.classList.add('shake-animation');
+                setTimeout(() => targetBox.classList.remove('shake-animation'), 500);
+                return;
+            }
+
+            // Apply slice visually (Animation prep)
+            let currentRows, currentCols;
+            if (isBox1) {
+                state.f1.currentRows = parts; // Set rows for box 1
+                currentRows = state.f1.currentRows;
+                currentCols = state.f1.currentCols;
+                state.expectedDen = currentRows * currentCols;
+                state.slicingTargetId = 1;
+            } else {
+                state.f2.currentCols = parts; // Set cols for box 2
+                currentRows = state.f2.currentRows;
+                currentCols = state.f2.currentCols;
+                state.expectedDen = currentRows * currentCols;
+                state.slicingTargetId = 2;
+            }
+
+            // Re-render target box with new grid
+            renderBox(targetBox, currentRows, currentCols, 0, isBox1 ? state.f1.activeColor : state.f2.activeColor);
+
+            // Pop Friction Modal
+            showFrictionModal(state.expectedDen);
+        }
+
+        const frictionModal = document.getElementById('friction-modal');
+        const fricInput = document.getElementById('fric-input-den');
+        const fricError = document.getElementById('fric-error');
+        const targetNumDisplay = document.getElementById('fric-target-num');
+
+        function showFrictionModal(expectedDen) {
+            const num = state.slicingTargetId === 1 ? state.f1.num * (expectedDen/state.f1.den) : state.f2.num * (expectedDen/state.f2.den);
+            targetNumDisplay.textContent = num;
+            fricInput.value = '';
+            fricError.classList.add('hidden');
+            frictionModal.classList.add('active');
+            fricInput.focus();
+        }
+
+        document.getElementById('btn-fric-submit').addEventListener('click', () => {
+            if (parseInt(fricInput.value) === state.expectedDen) {
+                // Success! Update equation
+                frictionModal.classList.remove('active');
+                
+                if(state.slicingTargetId === 1) {
+                    const newNum = state.f1.num * (state.expectedDen / state.f1.den);
+                    animateNumberChange('num1', newNum);
+                    animateNumberChange('den1', state.expectedDen);
+                } else {
+                    const newNum = state.f2.num * (state.expectedDen / state.f2.den);
+                    animateNumberChange('num2', newNum);
+                    animateNumberChange('den2', state.expectedDen);
+                }
+                
+                showFeedback("เก่งมาก! ตอนนี้เราแบ่งช่องได้เท่ากันแล้ว", "success");
+                checkMergeReadiness();
+
+            } else {
+                fricError.classList.remove('hidden');
+            }
+        });
+
+        function animateNumberChange(elementId, newValue) {
+            const el = document.getElementById(elementId);
+            el.value = newValue;
+            el.classList.add('number-update-anim');
+            setTimeout(() => el.classList.remove('number-update-anim'), 500);
+        }
+
+        const mergeZone = document.getElementById('merge-zone');
+
+        function enableMergeDrag() {
+            // Make boxes draggable to merge
+            [box1, box2].forEach(box => {
+                box.setAttribute('draggable', 'true');
+                box.addEventListener('dragstart', handleMergeDragStart);
+                box.addEventListener('dragend', handleMergeDragEnd);
+            });
+
+            // Make merge zone a drop target
+            mergeZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                mergeZone.classList.add('scale-125', 'border-emerald-500', 'text-emerald-500');
+            });
+            mergeZone.addEventListener('dragleave', () => {
+                mergeZone.classList.remove('scale-125', 'border-emerald-500', 'text-emerald-500');
+            });
+            mergeZone.addEventListener('drop', handleMergeDrop);
+        }
+
+        function handleMergeDragStart(e) {
+            e.dataTransfer.setData('sourceBox', e.target.id);
+            setTimeout(() => e.target.style.opacity = '0.4', 0);
+        }
+        function handleMergeDragEnd(e) {
+            e.target.style.opacity = '1';
+            mergeZone.classList.remove('scale-125', 'border-emerald-500', 'text-emerald-500');
+        }
+
+        function handleMergeDrop(e) {
+            e.preventDefault();
+            mergeZone.classList.remove('scale-125', 'border-emerald-500', 'text-emerald-500');
+            
+            // Get current values from DOM inputs (which represent sliced state)
+            const d1 = parseInt(document.getElementById('den1').value);
+            const d2 = parseInt(document.getElementById('den2').value);
+
+            if (d1 !== d2) {
+                // Core Friction point: Denominators not equal
+                showFeedback("Oops! รวมกันไม่ได้เพราะขนาดช่องยังไม่เท่ากัน ลองหั่นตารางให้เท่ากันก่อนสิ!", "error");
+                mergeZone.classList.add('shake-animation', 'bg-red-200');
+                setTimeout(() => mergeZone.classList.remove('shake-animation', 'bg-red-200'), 500);
+                return;
+            }
+
+            // If equal, perform merge!
+            performMerge();
+        }
+
+        function checkMergeReadiness() {
+             const d1 = parseInt(document.getElementById('den1').value);
+             const d2 = parseInt(document.getElementById('den2').value);
+             if (d1 === d2) {
+                 showFeedback("ช่องเท่ากันแล้ว! ลากบล็อกใดบล็อกหนึ่งมาวางที่เครื่องหมาย + ตรงกลางเพื่อรวมร่างได้เลย!", "info");
+                 mergeZone.classList.add('animate-pulse', 'border-emerald-400', 'bg-emerald-50');
+             }
+        }
+
+        function performMerge() {
+            const n1 = parseInt(document.getElementById('num1').value);
+            const n2 = parseInt(document.getElementById('num2').value);
+            const den = parseInt(document.getElementById('den1').value); // d1 === d2 at this point
+            
+            const totalNum = n1 + n2;
+
+            // Transform Merge Zone into result box visually (simplified)
+            mergeZone.className = 'fraction-box cell-green flex items-center justify-center text-white text-3xl font-bold border-emerald-500';
+            mergeZone.textContent = '✓'; // Using checkmark instead of full grid for simplicity in this MVP transition
+            
+            // Update Equation
+            const resNum = document.getElementById('num-res');
+            const resDen = document.getElementById('den-res');
+            resNum.value = totalNum;
+            resDen.value = den;
+            resNum.classList.add('text-emerald-600', 'bg-emerald-50');
+            resDen.classList.add('text-emerald-600', 'bg-emerald-50');
+
+            // Show Success Modal
+            document.getElementById('final-answer').textContent = `${totalNum} / ${den}`;
+            setTimeout(() => {
+                document.getElementById('success-modal').classList.add('active');
+            }, 800);
+        }
+
+        document.getElementById('btn-generate').addEventListener('click', generateProblem);
+        
+        document.getElementById('btn-restart').addEventListener('click', () => {
+            document.getElementById('success-modal').classList.remove('active');
+            
+            // Reset Merge Zone UI
+            mergeZone.className = 'w-16 h-16 rounded-full bg-slate-200 flex items-center justify-center text-3xl font-bold text-slate-400 cursor-pointer border-2 border-dashed border-slate-400 transition-all hover:bg-slate-300';
+            mergeZone.textContent = '+';
+
+            // Randomize inputs a bit for next round
+            document.getElementById('num1').value = 1;
+            document.getElementById('den1').value = Math.floor(Math.random() * 2) + 3; // 3 or 4
+            document.getElementById('num2').value = 1;
+            document.getElementById('den2').value = Math.floor(Math.random() * 2) + 2; // 2 or 3
+            
+            // Reset Results UI
+            const resNum = document.getElementById('num-res');
+            const resDen = document.getElementById('den-res');
+            resNum.value = '';
+            resDen.value = '';
+            resNum.className = 'equation-input bg-slate-100 text-green-600';
+            resDen.className = 'equation-input bg-slate-100 text-green-600';
+
+            generateProblem();
+        });
+
+        // Initialize on load
+        window.onload = () => {
+            generateProblem();
+        };
+
+    </script>
+</body>
+</html>
